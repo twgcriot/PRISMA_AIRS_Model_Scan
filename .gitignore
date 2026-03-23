@@ -1,0 +1,13 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.Python
+*.egg-info/
+dist/
+build/
+
+# Local secrets (copy from config/model-security.env.example)
+.env
+model-security.env
+config/model-security.env

@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "prisma-airs-modelscan"
+version = "0.1.0"
+description = "Terminal helper for Prisma AIRS AI Model Security scans (local path or Hugging Face)."
+requires-python = ">=3.11"
+dependencies = [
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+airs-modelscan = "prisma_airs_modelscan.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/prisma_airs_modelscan"]
