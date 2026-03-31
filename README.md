@@ -58,7 +58,7 @@ airs-modelscan doctor
 
 ### PDF report of scan history (Data Plane API)
 
-The [Prisma AIRS AI Model Security API](https://pan.dev/prisma-airs-model-security/api/aisecuritymodel/aisecuritymodel/) documents the management and data planes. The `report-pdf` subcommand calls **`GET /data/v1/scans`** (paginated), builds a **landscape PDF table** of recent scans, then optionally appends **per-scan rule evaluations** and a **full UUID reference**.
+The [Prisma AIRS AI Model Security API](https://pan.dev/prisma-airs-model-security/api/aisecuritymodel/aisecuritymodel/) documents the management and data planes. The `report-pdf` subcommand calls **`GET /data/v1/scans`** (paginated), builds a **landscape PDF table** of recent scans, then appends **per-scan detail pages** (file inventory from `/files` and violations from `/rule-violations`) plus a **full UUID reference**. Add **`--include-evaluations`** to also fetch and print the **per-rule evaluation** table on each detail page.
 
 ```bash
 airs-modelscan report-pdf -o scans-report.pdf
@@ -68,7 +68,7 @@ airs-modelscan report-pdf --security-group-uuid "<uuid>" -o hf-only.pdf
 
 Requires the Python SDK (`model-security-client`) and the same OAuth env vars as scans; it does **not** require the `model-security` binary on `PATH`.
 
-With `--include-evaluations`, each scan gets its own **landscape page**: a tight header, a **rule evaluations** table (with short rule summary text), and a **violations** table (threat, file, detail). Row counts are capped so the block usually fits on one page; if a scan has very many rows, tables may continue on the following page.
+Each scan gets a **detail section** with a tight header, **files in scan** (path, type, result, formats, and counts), and **violations grouped by file**. With **`--include-evaluations`**, a **rule evaluations** table (short rule summary per row) is added above the file table. Row counts are capped so sections usually fit comfortably; long scans may spill across pages.
 
 ## Usage
 

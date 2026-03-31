@@ -209,7 +209,7 @@ def _cmd_report_pdf(args: argparse.Namespace) -> int:
         base_url=base,
         total_items_hint=total_hint,
         include_evaluations=bool(args.include_evaluations),
-        client=client if args.include_evaluations else None,
+        client=client,
     )
     print(args.output.resolve())
     return 0
@@ -278,7 +278,8 @@ def main(argv: list[str] | None = None) -> None:
     p_report.add_argument(
         "--include-evaluations",
         action="store_true",
-        help="Append per-scan rule evaluation tables (extra API calls).",
+        help="Include per-scan rule evaluation table on detail pages (files + violations are "
+        "always included; this adds get_scan_evaluations calls).",
     )
 
     p_local = sub.add_parser("local", help="Scan a model directory on disk.")
