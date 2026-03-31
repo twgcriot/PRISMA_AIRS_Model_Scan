@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from uuid import UUID
 
 from dotenv import load_dotenv
 
@@ -167,6 +168,53 @@ def _cmd_doctor() -> int:
     return 1
 
 
+def _cmd_report_pdf(args: argparse.Namespace) -> int:
+    try:
+        from model_security_client.api import ModelSecurityAPIClient
+    except ImportError:
+        print(
+            "model_security_client is not installed. Install model-security-client from your tenant PyPI.",
+            file=sys.stderr,
+        )
+        return 127
+
+    from prisma_airs_modelscan.pdf_report import fetch_all_scans, write_scans_pdf
+
+    base = os.environ.get("MODEL_SECURITY_API_ENDPOINT", "").rstrip("/")
+    if not base:
+        print(
+            "MODEL_SECURITY_API_ENDPOINT is not set (see config/model-security.env.example).",
+            file=sys.stderr,
+        )
+        return 2
+
+    sg: UUID | None = None
+    if getattr(args, "security_group_uuid", None):
+        try:
+            sg = UUID(args.security_group_uuid.strip())
+        except ValueError:
+            print("Invalid --security-group-uuid (expected UUID).", file=sys.stderr)
+            return 2
+
+    client = ModelSecurityAPIClient(base_url=base)
+    scans, total_hint = fetch_all_scans(
+        client,
+        page_size=args.page_size,
+        max_scans=args.max_scans,
+        security_group_uuid=sg,
+    )
+    write_scans_pdf(
+        args.output,
+        scans,
+        base_url=base,
+        total_items_hint=total_hint,
+        include_evaluations=bool(args.include_evaluations),
+        client=client if args.include_evaluations else None,
+    )
+    print(args.output.resolve())
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     raw = sys.argv[1:] if argv is None else argv
     if "--" in raw:
@@ -193,6 +241,44 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser(
         "doctor",
         help="Check PATH, credentials env vars, and Python SDK import.",
+    )
+
+    p_report = sub.add_parser(
+        "report-pdf",
+        help="Export scan history as a columnar PDF (Data Plane list_scans API).",
+    )
+    p_report.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=Path("scans-report.pdf"),
+        help="Output PDF path (default: scans-report.pdf).",
+    )
+    p_report.add_argument(
+        "--page-size",
+        type=int,
+        default=100,
+        metavar="N",
+        help="Page size when calling list_scans (default: 100).",
+    )
+    p_report.add_argument(
+        "--max-scans",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Stop after this many scans (default: all pages).",
+    )
+    p_report.add_argument(
+        "--security-group-uuid",
+        type=str,
+        default=None,
+        metavar="UUID",
+        help="If set, only include scans for this security group.",
+    )
+    p_report.add_argument(
+        "--include-evaluations",
+        action="store_true",
+        help="Append per-scan rule evaluation tables (extra API calls).",
     )
 
     p_local = sub.add_parser("local", help="Scan a model directory on disk.")
@@ -272,6 +358,8 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "doctor":
         raise SystemExit(_cmd_doctor())
+    if args.command == "report-pdf":
+        raise SystemExit(_cmd_report_pdf(args))
 
     extra = list(passthrough)
     label_args = _parse_labels(getattr(args, "labels", None))
@@ -285,6 +373,9 @@ def main(argv: list[str] | None = None) -> None:
         )
         sys.exit(127)
     model_security_exe = exe or "model-security"
+
+    if args.command not in ("local", "hf"):
+        parser.error(f"unknown command: {args.command!r}")
 
     if args.command == "local":
         path = args.path.expanduser().resolve()

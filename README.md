@@ -56,6 +56,18 @@ pip install "model-security-client[all]" --extra-index-url "$(python scripts/fet
 airs-modelscan doctor
 ```
 
+### PDF report of scan history (Data Plane API)
+
+The [Prisma AIRS AI Model Security API](https://pan.dev/prisma-airs-model-security/api/aisecuritymodel/aisecuritymodel/) documents the management and data planes. The `report-pdf` subcommand calls **`GET /data/v1/scans`** (paginated), builds a **landscape PDF table** of recent scans, then optionally appends **per-scan rule evaluations** and a **full UUID reference**.
+
+```bash
+airs-modelscan report-pdf -o scans-report.pdf
+airs-modelscan report-pdf -o report.pdf --max-scans 500 --include-evaluations
+airs-modelscan report-pdf --security-group-uuid "<uuid>" -o hf-only.pdf
+```
+
+Requires the Python SDK (`model-security-client`) and the same OAuth env vars as scans; it does **not** require the `model-security` binary on `PATH`.
+
 ## Usage
 
 `airs-modelscan` loads the first dotenv file it finds among:
