@@ -13,9 +13,10 @@ from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (
+    KeepTogether,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -27,6 +28,12 @@ from reportlab.platypus import (
 from model_security_client.api import ModelSecurityAPIClient
 
 DOC_REF = "https://pan.dev/prisma-airs-model-security/api/aisecuritymodel/aisecuritymodel/"
+
+_MAX_DETAIL_ROWS_EVAL = 16
+_MAX_DETAIL_ROWS_VIOL = 18
+_DESC_MAX = 68
+_RULE_MAX = 34
+_URI_MAX_DETAIL = 84
 
 
 def _dt_utc(scan_dt: dt.datetime | None) -> str:
@@ -63,6 +70,13 @@ def _files_sk(scan: Any) -> str:
     return f"{s or 0}/{k or 0}"
 
 
+def _trunc(s: str, n: int) -> str:
+    s = (s or "").strip().replace("\n", " ")
+    if len(s) <= n:
+        return s
+    return s[: n - 1] + "…"
+
+
 def fetch_all_scans(
     client: ModelSecurityAPIClient,
     *,
@@ -70,7 +84,6 @@ def fetch_all_scans(
     max_scans: int | None,
     security_group_uuid: UUID | None,
 ) -> tuple[list[Any], int | None]:
-    """Paginate ``GET /data/v1/scans`` until exhausted. Returns (scans, total_items from first page)."""
     scans: list[Any] = []
     skip = 0
     total_hint: int | None = None
@@ -94,6 +107,179 @@ def fetch_all_scans(
     return scans, total_hint
 
 
+def _make_para_styles() -> tuple[Any, Any, Any, Any, Any, Any]:
+    styles = getSampleStyleSheet()
+    normal = styles["Normal"]
+    title_sty = styles["Title"]
+    h2 = styles["Heading2"]
+
+    tiny = ParagraphStyle(
+        "tiny",
+        parent=normal,
+        fontName="Helvetica",
+        fontSize=5,
+        leading=6,
+        spaceAfter=0,
+        spaceBefore=0,
+    )
+    tiny_bold = ParagraphStyle(
+        "tinyBold",
+        parent=tiny,
+        fontName="Helvetica-Bold",
+        fontSize=5.5,
+        leading=6.5,
+    )
+    micro = ParagraphStyle(
+        "micro",
+        parent=normal,
+        fontName="Helvetica",
+        fontSize=4.5,
+        leading=5.5,
+    )
+    return title_sty, h2, normal, tiny, tiny_bold, micro
+
+
+def _append_scan_detail_one_page(
+    story: list[Any],
+    scan: Any,
+    client: ModelSecurityAPIClient,
+    *,
+    tiny: Any,
+    tiny_bold: Any,
+    micro: Any,
+) -> None:
+    """Dense banner + rule evaluations + violations; one PageBreak precedes each call (except first)."""
+    uid = str(scan.uuid)
+    uri = _trunc(scan.model_uri or "", _URI_MAX_DETAIL)
+
+    banner = (
+        f"<b>{escape(uid)}</b> &nbsp;|&nbsp; Outcome: <b>{escape(str(scan.eval_outcome))}</b> "
+        f"&nbsp;|&nbsp; Rules P/F/T: {escape(_rules_pft(scan))} "
+        f"&nbsp;|&nbsp; Files sc/skip: {escape(_files_sk(scan))}"
+    )
+    summary = Paragraph(
+        f"Model: {escape(uri)} &nbsp;|&nbsp; Source: {escape(str(scan.source_type))} "
+        f"&nbsp;|&nbsp; Origin: {escape(str(scan.scan_origin))} "
+        f"&nbsp;|&nbsp; SG: {escape(_trunc(scan.security_group_name or '', 38))} "
+        f"&nbsp;|&nbsp; Scanner: {escape(_trunc(scan.scanner_version or '', 12))}",
+        micro,
+    )
+    label_line: list[Any] = []
+    if _labels_str(scan):
+        label_line = [
+            Paragraph(f"Labels: {escape(_trunc(_labels_str(scan), 180))}", micro),
+        ]
+
+    ev_rows: list[list[Any]] = []
+    try:
+        evl = client.get_scan_evaluations(scan_uuid=scan.uuid, limit=100, skip=0)
+        ev_list = list(evl.evaluations)
+        ev_total = len(ev_list)
+        ev_trim = ev_list[:_MAX_DETAIL_ROWS_EVAL]
+        ev_hdr = ["Rule", "Res", "V#", "State", "Rule summary"]
+        ev_rows.append([Paragraph(escape(h), tiny_bold) for h in ev_hdr])
+        for ev in ev_trim:
+            ev_rows.append(
+                [
+                    Paragraph(escape(_trunc(ev.rule_name, _RULE_MAX)), tiny),
+                    Paragraph(escape(str(ev.result)[:12]), tiny),
+                    Paragraph(escape(str(ev.violation_count)), tiny),
+                    Paragraph(escape(str(ev.rule_instance_state)[:14]), tiny),
+                    Paragraph(escape(_trunc(ev.rule_description, _DESC_MAX)), tiny),
+                ]
+            )
+        if ev_total > len(ev_trim):
+            ev_rows.append(
+                [Paragraph(escape(f"(+{ev_total - len(ev_trim)} more evaluations omitted)"), tiny)]
+                + [Paragraph("", tiny)] * 4
+            )
+    except Exception as exc:  # noqa: BLE001
+        ev_rows.append(
+            [Paragraph(escape(f"Evaluations: {exc}"), tiny)] + [Paragraph("", tiny)] * 4
+        )
+
+    viol_rows: list[list[Any]] = []
+    try:
+        viol_list_resp = client.get_scan_violations(
+            scan_uuid=scan.uuid, limit=100, skip=0
+        )
+        viol_list = list(viol_list_resp.violations)
+        viol_total = len(viol_list)
+        viol_trim = viol_list[:_MAX_DETAIL_ROWS_VIOL]
+        vv_hdr = ["Rule", "Threat", "File", "Detail", "State"]
+        viol_rows.append([Paragraph(escape(h), tiny_bold) for h in vv_hdr])
+        for v in viol_trim:
+            fpath = v.file if v.file else "\u2014"
+            viol_rows.append(
+                [
+                    Paragraph(escape(_trunc(v.rule_name, _RULE_MAX)), tiny),
+                    Paragraph(escape(_trunc(str(v.threat or ""), 18)), tiny),
+                    Paragraph(escape(_trunc(fpath, 26)), tiny),
+                    Paragraph(escape(_trunc(v.description, _DESC_MAX)), tiny),
+                    Paragraph(escape(str(v.rule_instance_state)[:12]), tiny),
+                ]
+            )
+        if viol_total > len(viol_trim):
+            viol_rows.append(
+                [Paragraph(escape(f"(+{viol_total - len(viol_trim)} more violations omitted)"), tiny)]
+                + [Paragraph("", tiny)] * 4
+            )
+    except Exception as exc:  # noqa: BLE001
+        viol_rows.append(
+            [Paragraph(escape(f"Violations: {exc}"), tiny)] + [Paragraph("", tiny)] * 4
+        )
+
+    w = landscape(A4)[0] - 72
+    ev_w = [w * 0.14, w * 0.09, w * 0.06, w * 0.11, w * 0.60]
+    vv_w = [w * 0.14, w * 0.12, w * 0.15, w * 0.51, w * 0.08]
+
+    te = Table(ev_rows, colWidths=ev_w, hAlign="LEFT")
+    te.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dde8f0")),
+                ("GRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#b0b0b0")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 0.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0.5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
+    tv = Table(viol_rows, colWidths=vv_w, hAlign="LEFT")
+    tv.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8ddde")),
+                ("GRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#b0b0b0")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 0.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0.5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
+
+    inner: list[Any] = [
+        Paragraph(banner, tiny_bold),
+        summary,
+        *label_line,
+        Spacer(1, 0.03 * inch),
+        Paragraph("Rule evaluations", tiny_bold),
+        te,
+        Spacer(1, 0.04 * inch),
+        Paragraph("Violations (rule findings)", tiny_bold),
+        tv,
+    ]
+    row_budget = len(ev_rows) + len(viol_rows)
+    if row_budget <= 40:
+        story.append(KeepTogether(inner))
+    else:
+        story.extend(inner)
+
+
 def write_scans_pdf(
     output: Path,
     scans: list[Any],
@@ -112,14 +298,8 @@ def write_scans_pdf(
         topMargin=36,
         bottomMargin=36,
     )
-    styles = getSampleStyleSheet()
-    title_sty = styles["Title"]
-    normal = styles["Normal"]
-    h2 = styles["Heading2"]
-    small = normal.clone(name="small")
-    small.fontSize = 6
-    small.leading = 7
-    thead = small.clone(name="thead")
+    title_sty, h2, normal, tiny, tiny_bold, micro = _make_para_styles()
+    thead = tiny.clone("thead")
     thead.fontName = "Helvetica-Bold"
 
     story: list[Any] = []
@@ -137,11 +317,18 @@ def write_scans_pdf(
     summary = f"Scans in this PDF: {len(scans)}"
     if total_items_hint is not None:
         summary += (
-            f" (management API total_items on first page: {total_items_hint}; "
-            "filters and caps may reduce rows below that total)."
+            f" (API total_items on first page: {total_items_hint}; "
+            "filters may reduce rows)."
         )
     story.append(Paragraph(summary, normal))
-    story.append(Spacer(1, 0.18 * inch))
+    if include_evaluations and scans:
+        story.append(
+            Paragraph(
+                "Detail section: one page per scan (evaluations + violations) with compact tables.",
+                normal,
+            )
+        )
+    story.append(Spacer(1, 0.16 * inch))
 
     if not scans:
         story.append(Paragraph("No scans returned for the current filters.", normal))
@@ -170,17 +357,17 @@ def write_scans_pdf(
             uri = uri[:197] + "..."
         data.append(
             [
-                Paragraph(escape(uid[:8] + "…"), small),
-                Paragraph(escape(_dt_utc(scan.created_at)), small),
-                Paragraph(escape(uri), small),
-                Paragraph(escape(str(scan.source_type)), small),
-                Paragraph(escape(str(scan.scan_origin)), small),
-                Paragraph(escape((scan.security_group_name or "")[:44]), small),
-                Paragraph(escape(str(scan.eval_outcome)), small),
-                Paragraph(escape(_rules_pft(scan)), small),
-                Paragraph(escape(_files_sk(scan)), small),
-                Paragraph(escape((scan.scanner_version or "")[:18]), small),
-                Paragraph(escape(_labels_str(scan)[:220]), small),
+                Paragraph(escape(uid[:8] + "…"), tiny),
+                Paragraph(escape(_dt_utc(scan.created_at)), tiny),
+                Paragraph(escape(uri), tiny),
+                Paragraph(escape(str(scan.source_type)), tiny),
+                Paragraph(escape(str(scan.scan_origin)), tiny),
+                Paragraph(escape((scan.security_group_name or "")[:44]), tiny),
+                Paragraph(escape(str(scan.eval_outcome)), tiny),
+                Paragraph(escape(_rules_pft(scan)), tiny),
+                Paragraph(escape(_files_sk(scan)), tiny),
+                Paragraph(escape((scan.scanner_version or "")[:18]), tiny),
+                Paragraph(escape(_labels_str(scan)[:220]), tiny),
             ]
         )
 
@@ -205,49 +392,25 @@ def write_scans_pdf(
 
     if include_evaluations and client and scans:
         story.append(PageBreak())
-        story.append(Paragraph("Per-scan rule evaluations", h2))
+        story.append(Paragraph("Per-scan evaluations and violations (one page each)", h2))
+        story.append(
+            Paragraph(
+                "Tables use small type and row caps so summaries + evaluations + "
+                "violations fit on a single landscape page when possible.",
+                normal,
+            )
+        )
         story.append(Spacer(1, 0.1 * inch))
-        ev_hdr = ["Rule", "Result", "Violations", "Rule state"]
-        for scan in scans:
-            uri_hint = (scan.model_uri or "")[:96]
-            story.append(
-                Paragraph(
-                    f"Scan <b>{escape(str(scan.uuid))}</b> — {escape(uri_hint)}",
-                    small,
-                )
+        for i, scan in enumerate(scans):
+            if i > 0:
+                story.append(PageBreak())
+            _append_scan_detail_one_page(
+                story, scan, client, tiny=tiny, tiny_bold=tiny_bold, micro=micro
             )
-            try:
-                evl = client.get_scan_evaluations(scan_uuid=scan.uuid, limit=100, skip=0)
-            except Exception as exc:  # noqa: BLE001
-                story.append(Paragraph(escape(f"(evaluations unavailable: {exc})"), small))
-                story.append(Spacer(1, 0.08 * inch))
-                continue
-            et = [[Paragraph(escape(x), thead) for x in ev_hdr]]
-            for ev in evl.evaluations:
-                et.append(
-                    [
-                        Paragraph(escape(ev.rule_name[:64]), small),
-                        Paragraph(escape(str(ev.result)), small),
-                        Paragraph(escape(str(ev.violation_count)), small),
-                        Paragraph(escape(str(ev.rule_instance_state)[:28]), small),
-                    ]
-                )
-            t2 = Table(et, colWidths=[230, 54, 54, 86])
-            t2.setStyle(
-                TableStyle(
-                    [
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8e8e8")),
-                        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ]
-                )
-            )
-            story.append(t2)
-            story.append(Spacer(1, 0.14 * inch))
 
     story.append(PageBreak())
     story.append(Paragraph("Full scan UUID reference", h2))
-    story.append(Spacer(1, 0.08 * inch))
+    story.append(Spacer(1, 0.06 * inch))
     ref = [
         [Paragraph(escape("Prefix"), thead), Paragraph(escape("Full UUID"), thead)],
     ]
@@ -255,8 +418,8 @@ def write_scans_pdf(
         uid = str(scan.uuid)
         ref.append(
             [
-                Paragraph(escape(uid[:8] + "…"), small),
-                Paragraph(escape(uid), small),
+                Paragraph(escape(uid[:8] + "…"), tiny),
+                Paragraph(escape(uid), tiny),
             ]
         )
     rt = Table(ref, colWidths=[64, 430])

@@ -68,6 +68,8 @@ airs-modelscan report-pdf --security-group-uuid "<uuid>" -o hf-only.pdf
 
 Requires the Python SDK (`model-security-client`) and the same OAuth env vars as scans; it does **not** require the `model-security` binary on `PATH`.
 
+With `--include-evaluations`, each scan gets its own **landscape page**: a tight header, a **rule evaluations** table (with short rule summary text), and a **violations** table (threat, file, detail). Row counts are capped so the block usually fits on one page; if a scan has very many rows, tables may continue on the following page.
+
 ## Usage
 
 `airs-modelscan` loads the first dotenv file it finds among:
