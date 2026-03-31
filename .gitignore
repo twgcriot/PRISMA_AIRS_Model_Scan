@@ -7,6 +7,10 @@ __pycache__/
 dist/
 build/
 
+# Generated scan reports (default output name)
+scans-report.pdf
+*.pdf
+
 # Local secrets (copy from config/model-security.env.example)
 .env
 model-security.env
