@@ -106,6 +106,17 @@ def _parse_labels(labels: list[str] | None) -> list[str]:
     return out
 
 
+def _find_model_security() -> str | None:
+    found = shutil.which("model-security")
+    if found:
+        return found
+    # Do not resolve sys.executable first: venv python is often a symlink into Homebrew.
+    sibling = Path(sys.executable).parent / "model-security"
+    if sibling.is_file() and os.access(sibling, os.X_OK):
+        return str(sibling)
+    return None
+
+
 def _model_security_version(exe: str) -> str | None:
     try:
         p = subprocess.run(
@@ -126,7 +137,7 @@ def _cmd_doctor() -> int:
     print("airs-modelscan / Prisma AIRS Model Security — environment check\n")
 
     ok = True
-    exe = shutil.which("model-security")
+    exe = _find_model_security()
     if exe:
         ver = _model_security_version(exe)
         extra = f" ({ver})" if ver else ""
@@ -178,7 +189,8 @@ def _cmd_report_pdf(args: argparse.Namespace) -> int:
         )
         return 127
 
-    from prisma_airs_modelscan.pdf_report import fetch_all_scans, write_scans_pdf
+    from prisma_airs_modelscan.pdf_report import write_scans_pdf
+    from prisma_airs_modelscan.scans import fetch_all_scans
 
     base = os.environ.get("MODEL_SECURITY_API_ENDPOINT", "").rstrip("/")
     if not base:
@@ -212,6 +224,40 @@ def _cmd_report_pdf(args: argparse.Namespace) -> int:
         client=client,
     )
     print(args.output.resolve())
+    return 0
+
+
+_LOCALHOST_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _cmd_ui(args: argparse.Namespace) -> int:
+    host = (args.host or "127.0.0.1").strip()
+    if host not in _LOCALHOST_HOSTS:
+        print("The scan console binds localhost only (127.0.0.1 / localhost / ::1).", file=sys.stderr)
+        return 2
+    try:
+        import uvicorn
+    except ImportError:
+        print(
+            "UI extras are not installed. Run: pip install -e '.[ui]'",
+            file=sys.stderr,
+        )
+        return 127
+    try:
+        from prisma_airs_modelscan.web.app import create_app
+    except ImportError as exc:
+        print(f"Could not load the scan console: {exc}", file=sys.stderr)
+        print("Install UI extras with: pip install -e '.[ui]'", file=sys.stderr)
+        return 127
+
+    app = create_app()
+    url = f"http://127.0.0.1:{args.port}/"
+    print(f"Local scan console: {url}")
+    if args.open_browser:
+        import webbrowser
+
+        webbrowser.open(url)
+    uvicorn.run(app, host=host, port=args.port, log_level="info")
     return 0
 
 
@@ -354,6 +400,29 @@ def main(argv: list[str] | None = None) -> None:
         help="Repeatable; forwarded as -l KEY=VALUE to model-security.",
     )
 
+    p_ui = sub.add_parser(
+        "ui",
+        help="Open a localhost browser console for scanning a local model directory.",
+    )
+    p_ui.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind address (localhost only; default 127.0.0.1).",
+    )
+    p_ui.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="Port (default 8765).",
+    )
+    p_ui.add_argument(
+        "--open",
+        dest="open_browser",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Open the console in a browser (default: open). Use --no-open to skip.",
+    )
+
     args = parser.parse_args(parse_argv)
     _load_model_security_env(args.env_file)
 
@@ -361,11 +430,13 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(_cmd_doctor())
     if args.command == "report-pdf":
         raise SystemExit(_cmd_report_pdf(args))
+    if args.command == "ui":
+        raise SystemExit(_cmd_ui(args))
 
     extra = list(passthrough)
     label_args = _parse_labels(getattr(args, "labels", None))
 
-    exe = shutil.which("model-security")
+    exe = _find_model_security()
     if not exe and not args.dry_run:
         print(
             "model-security not found on PATH. Install AI Model Security (model-security-client) "

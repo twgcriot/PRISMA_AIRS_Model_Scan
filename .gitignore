@@ -15,3 +15,7 @@ scans-report.pdf
 .env
 model-security.env
 config/model-security.env
+
+# Downloaded models and local scan staging
+models/
+.tmp/

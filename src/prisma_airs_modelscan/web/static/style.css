@@ -1,0 +1,196 @@
+:root {
+  --bg: #0c0d10;
+  --panel: #14161b;
+  --border: #2a2e36;
+  --text: #e8e9ed;
+  --muted: #8b909a;
+  --pass: #3dba7a;
+  --fail: #e05d5d;
+  --warn: #d6a24a;
+  --term: #d7e0c8;
+  --prompt: #8fd19e;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+}
+
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px 0;
+}
+.brand {
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.health { color: var(--muted); font-size: 12px; margin-left: auto; }
+.health.bad { color: var(--fail); }
+.sg, .local-model {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  font: inherit;
+}
+.local-model {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.sg { max-width: 240px; }
+
+.cmd {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+}
+.cmd input {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.btn {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--muted); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+  font-weight: 600;
+}
+
+.hf-results {
+  margin: 0 14px;
+  border: 1px solid var(--border);
+  max-height: 160px;
+  overflow: auto;
+}
+.hf-results:empty { display: none; }
+.hf-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  padding: 7px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.hf-row:hover, .hf-row.selected { background: var(--panel); }
+.hf-id { font-family: var(--mono); font-size: 12px; }
+.hf-meta { color: var(--muted); font-size: 11px; }
+
+.term {
+  flex: 1;
+  min-height: 0;
+  margin: 0 14px 10px;
+  border: 1px solid var(--border);
+  background: #0a0b0d;
+  display: flex;
+  flex-direction: column;
+}
+.term-chrome {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.dots { display: flex; gap: 5px; }
+.dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3a3e46;
+  display: block;
+}
+.dots i:nth-child(1) { background: #ff5f57; }
+.dots i:nth-child(2) { background: #febc2e; }
+.dots i:nth-child(3) { background: #28c840; }
+#term-title { flex: 1; }
+.term-timer {
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0.04em;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.term-stage { color: var(--text); text-transform: none; letter-spacing: 0; }
+.term-body {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 10px 12px 14px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--term);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.term-body .prompt { color: var(--prompt); }
+.term-body .fail { color: var(--fail); }
+
+.verdict {
+  margin: 0 14px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+}
+.verdict .head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.outcome { font-size: 22px; font-weight: 700; }
+.outcome.blocked { color: var(--fail); }
+.outcome.passed { color: var(--pass); }
+.outcome.other { color: var(--warn); }
+.verdict .meta { color: var(--muted); }
+.rule {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.rule .name { font-weight: 600; }
+.rule.failed .name { color: var(--fail); }
+.rule.passed .name { color: var(--pass); }
+.rule .desc { color: var(--muted); margin-top: 2px; }
+
+.hidden { display: none !important; }

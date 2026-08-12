@@ -6,10 +6,8 @@ API reference: https://pan.dev/prisma-airs-model-security/api/aisecuritymodel/ai
 from __future__ import annotations
 
 import datetime as dt
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
-from uuid import UUID
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -27,13 +25,17 @@ from reportlab.platypus import (
 
 from model_security_client.api import ModelSecurityAPIClient
 
+from prisma_airs_modelscan.scans import (
+    DATA_PLANE_PAGE_CAP as _DATA_PLANE_PAGE_CAP,
+    fetch_all_scan_files as _fetch_all_scan_files,
+    fetch_all_scan_violations as _fetch_all_scan_violations,
+    index_violations_by_file as _index_violations_by_file,
+    viol_count_for_file as _viol_count_for_file,
+)
+
 DOC_REF = "https://pan.dev/prisma-airs-model-security/api/aisecuritymodel/aisecuritymodel/"
 
 _MAX_DETAIL_ROWS_EVAL = 16
-# Data Plane validates limit <= 100 for /files and /rule-violations (422 if higher).
-_DATA_PLANE_PAGE_CAP = 100
-_FILES_PAGE_SIZE = _DATA_PLANE_PAGE_CAP
-_VIOL_PAGE_SIZE = _DATA_PLANE_PAGE_CAP
 _MAX_FILE_ROWS_PDF = 100
 _MAX_VIOL_GROUPS = 35
 _MAX_VIOL_ROWS_PER_FILE = 14
@@ -109,98 +111,6 @@ def _remediation_snippet(rem: Any) -> str:
     if url:
         parts.append(_trunc(str(url), 48))
     return " | ".join(parts) if parts else ""
-
-
-def fetch_all_scans(
-    client: ModelSecurityAPIClient,
-    *,
-    page_size: int,
-    max_scans: int | None,
-    security_group_uuid: UUID | None,
-) -> tuple[list[Any], int | None]:
-    scans: list[Any] = []
-    skip = 0
-    total_hint: int | None = None
-
-    while True:
-        batch = client.list_scans(
-            limit=page_size,
-            skip=skip,
-            sort_order="desc",
-            security_group_uuid=security_group_uuid,
-        )
-        if total_hint is None and batch.pagination.total_items is not None:
-            total_hint = batch.pagination.total_items
-        scans.extend(batch.scans)
-        if len(batch.scans) < page_size:
-            break
-        skip += page_size
-        if max_scans is not None and len(scans) >= max_scans:
-            return scans[:max_scans], total_hint
-
-    return scans, total_hint
-
-
-def _fetch_all_scan_files(
-    client: ModelSecurityAPIClient, scan_uuid: UUID, *, page_size: int = _FILES_PAGE_SIZE
-) -> list[Any]:
-    out: list[Any] = []
-    skip = 0
-    chunk = min(page_size, _DATA_PLANE_PAGE_CAP)
-    while True:
-        batch = client.get_files(
-            scan_uuid=scan_uuid,
-            limit=chunk,
-            skip=skip,
-            query_path=None,
-        )
-        out.extend(batch.files)
-        if len(batch.files) < chunk:
-            break
-        skip += chunk
-    return out
-
-
-def _fetch_all_scan_violations(
-    client: ModelSecurityAPIClient, scan_uuid: UUID, *, page_size: int = _VIOL_PAGE_SIZE
-) -> list[Any]:
-    out: list[Any] = []
-    skip = 0
-    chunk = min(page_size, _DATA_PLANE_PAGE_CAP)
-    while True:
-        batch = client.get_scan_violations(
-            scan_uuid=scan_uuid,
-            limit=chunk,
-            skip=skip,
-        )
-        out.extend(batch.violations)
-        if len(batch.violations) < chunk:
-            break
-        skip += chunk
-    return out
-
-
-def _index_violations_by_file(violations: list[Any]) -> dict[str, list[Any]]:
-    by_path: dict[str, list[Any]] = defaultdict(list)
-    for v in violations:
-        key = (v.file or "").strip()
-        if not key:
-            key = "__UNSPECIFIED__"
-        by_path[key].append(v)
-    return dict(by_path)
-
-
-def _viol_count_for_file(file_path: str, by_path: dict[str, list[Any]]) -> int:
-    if file_path in by_path:
-        return len(by_path[file_path])
-    n = 0
-    fp = file_path.rstrip("/")
-    for vk, vs in by_path.items():
-        if vk == "__UNSPECIFIED__":
-            continue
-        if vk == fp or fp.endswith(vk) or vk.endswith(fp):
-            n += len(vs)
-    return n
 
 
 def _make_para_styles() -> tuple[Any, Any, Any, Any, Any, Any]:

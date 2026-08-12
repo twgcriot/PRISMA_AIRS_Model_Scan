@@ -70,6 +70,21 @@ Requires the Python SDK (`model-security-client`) and the same OAuth env vars as
 
 Each scan gets a **detail section** with a tight header, **files in scan** (path, type, result, formats, and counts), and **violations grouped by file**. With **`--include-evaluations`**, a **rule evaluations** table (short rule summary per row) is added above the file table. Row counts are capped so sections usually fit comfortably; long scans may spill across pages.
 
+## Local scan console
+
+A localhost browser UI to **search and download public Hugging Face models**, then scan a downloaded folder with the vendor `model-security` CLI and a **LOCAL** security group.
+
+```bash
+pip install -e ".[ui]"
+airs-modelscan ui --port 8765
+```
+
+Opens `http://127.0.0.1:8765/` (bind is localhost-only). Credentials stay in the server process from the same dotenv file as the CLI; they are not sent to the browser. Use `--no-open` to skip launching a browser.
+
+Download and scan are separate: Search / Download writes into `./models/`, then pick a model from the dropdown and Scan. Scan runs `model-security scan --security-group-uuid … --model-path …`. Live CLI output streams in an embedded terminal. The console does not call the Python REST SDK.
+
+Downloads land under `./models/<org>--<name>/`. Gated and private Hub repos are rejected.
+
 ## Usage
 
 `airs-modelscan` loads the first dotenv file it finds among:
@@ -114,6 +129,35 @@ Use a security group with source type **LOCAL**.
 airs-modelscan local --security-group-uuid "<uuid>" /path/to/model/dir -l env=dev
 ```
 
+### Python script example (local scan)
+
+If you want a plain Python entrypoint (instead of the `airs-modelscan` wrapper), use:
+
+```bash
+python scripts/local_scan_example.py \
+  --env-file config/model-security.env \
+  --security-group-uuid "<uuid>" \
+  /path/to/model/dir \
+  --label source=local-script
+```
+
+#### Example: scan Ollama `llama3:70b`
+
+Ollama stores models under `~/.ollama/models`. This example creates a tiny staging directory with a symlink to just the `llama3:70b` blob, then scans it:
+
+```bash
+mkdir -p .tmp/ollama-llama3-70b-scan
+ln -sf "$HOME/.ollama/models/blobs/sha256-0bd51f8f0c975ce910ed067dcb962a9af05b77bafcdc595ef02178387f10e51d" \
+  .tmp/ollama-llama3-70b-scan/llama3-70b.gguf
+
+python scripts/local_scan_example.py \
+  --env-file config/model-security.env \
+  --security-group-uuid "<local-security-group-uuid>" \
+  .tmp/ollama-llama3-70b-scan \
+  --label model=llama3-70b \
+  --label source=ollama
+```
+
 ### Dry run
 
 Print the `model-security` command without executing:
@@ -132,6 +176,7 @@ The underlying `model-security` CLI exits **non-zero** when the model **fails** 
 |--------|---------|
 | `scripts/fetch-pan-pypi-url.py` | OAuth + `pypi/authenticate`; prints tenant PyPI URL to stdout |
 | `scripts/install-pan-model-security.sh` | `pip install "model-security-client[all]"` using `MODEL_SECURITY_PYPI_URL` or dotenv |
+| `scripts/local_scan_example.py` | Minimal Python example that runs a LOCAL scan via `model-security scan` |
 
 ## Development
 

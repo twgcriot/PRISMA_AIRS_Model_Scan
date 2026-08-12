@@ -12,8 +12,19 @@ dependencies = [
     "reportlab>=4.0.0",
 ]
 
+[project.optional-dependencies]
+ui = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sse-starlette>=2.0.0",
+    "huggingface_hub>=0.26.0",
+]
+
 [project.scripts]
 airs-modelscan = "prisma_airs_modelscan.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/prisma_airs_modelscan"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/prisma_airs_modelscan/web/static" = "prisma_airs_modelscan/web/static"

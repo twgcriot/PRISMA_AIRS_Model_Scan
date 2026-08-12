@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Model scan</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="bar">
+        <div class="brand">Prisma AIRS</div>
+        <div id="health" class="health"></div>
+      </header>
+
+      <div class="cmd">
+        <input id="hf-q" type="text" spellcheck="false" placeholder="Search Hugging Face or paste org/model-name" />
+        <button type="button" class="btn" id="btn-hf-search">Search</button>
+        <button type="button" class="btn btn-primary" id="btn-hf-download">Download</button>
+      </div>
+      <div id="hf-results" class="hf-results"></div>
+
+      <div class="cmd">
+        <select id="local-model" class="local-model" title="Downloaded models">
+          <option value="">No downloaded models</option>
+        </select>
+        <select id="sg" class="sg" title="LOCAL security group"></select>
+        <button type="button" class="btn btn-primary" id="btn-scan">Scan</button>
+      </div>
+
+      <section class="term" aria-label="Live CLI output">
+        <div class="term-chrome">
+          <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span id="term-title">terminal</span>
+          <span id="term-size" class="term-timer"></span>
+          <span id="term-timer" class="term-timer"></span>
+          <span id="term-stage" class="term-stage"></span>
+        </div>
+        <pre id="term" class="term-body"></pre>
+      </section>
+
+      <section id="verdict" class="verdict hidden"></section>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
